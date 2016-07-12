@@ -1,6 +1,6 @@
 %% A server which could be used in a telephone exchange to analyze
 %% telephone numbers dialled by users of the exchange
-%% page 121 & 80
+%% page 80 & 110
 
 -module(number_analyser).
 -export([start/0,server/1]).
@@ -39,9 +39,9 @@ request(Req) ->
 server(AnalTable) ->
     receive
         {From, {analyse,Seq}} ->
-            case catch lookup(Seq, AnalTable) of
-                {'EXIT', _} ->
-                    From ! {number_analyser, error};
+            case catch lookup(Seq, AnalTable) of     % <-- check bad data
+                {'EXIT', _} ->                       % <-- 
+                    From ! {number_analyser, error}; % <-- 
                 Result ->
                     From ! {number_analyser, Result}
             end,
@@ -49,10 +49,10 @@ server(AnalTable) ->
 
         {From, {add_number, Seq, Key}} ->
             From ! {number_analyser, ack},
-            case catch insert(Seq, Key, AnalTable) of
-                {'EXIT', _} ->
-                    From ! {number_analyser, error},
-                    server(AnalTable); % Table not changed
+            case catch insert(Seq, Key, AnalTable) of % <-- check bad data
+                {'EXIT', _} ->                        % <-- check bad data
+                    From ! {number_analyser, error},  % <-- check bad data
+                    server(AnalTable);                % Table not changed
                 NewTable ->
                     server(NewTable)
             end
