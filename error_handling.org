@@ -1,0 +1,42 @@
+#+TITLE: Error Handling in Erlang
+#+OPTIONS: toc:nil html-postamble:nil num:nil
+
+* Catch & Throw
+
+#+BEGIN_SRC erlang
+foo(1) ->
+    hello;
+foo(2) ->
+    throw({myerror, abc});
+foo(3) ->
+    tuple_to_list(a);
+foo(4) ->
+    exit({myExit, 222}).
+
+demo(X) ->
+    case catch foo(X) of
+        {myerror, Args} ->
+            {user_error, Args};
+        {'EXIT', What} ->
+            {caught_error, What};
+        Other ->
+            Other
+    end.
+#+END_SRC
+
+** Examples
+*** demo(1)
+   Evaluates to hello as before. Since no failure occurs and we do not
+   evaluate throw, catch returns the result of evaluating =foo(1)=.
+*** demo(2)
+   Evaluates to ={user_error, abc}=. =throw({myerror, abc})= was evaluated
+   causing the surrounding catch to return ={myerror, abc}= and case
+   to return ={user_error, abc}=.
+*** demo(3)
+   Evaluates to ={caught_error, badarg}=. =foo(3)= fails and catch evaluates
+   to ={’EXIT’, badarg}=.
+*** demo(4)
+   Evaluates to ={caught_error, {myexit, 222}}=.
+*** demo(5)
+   Evaluates to ={caught_error,function_clause}=.
+
