@@ -1,6 +1,8 @@
 #+TITLE: Error Handling in Erlang
 #+OPTIONS: toc:nil html-postamble:nil num:nil
 
+[[file:~/Desktop/erlang-book-part1.pdf][Erlang textbook]] - Page 91
+
 * Catch & Throw
 
 #+BEGIN_SRC erlang
@@ -25,18 +27,118 @@ demo(X) ->
 #+END_SRC
 
 ** Examples
-*** demo(1)
-   Evaluates to hello as before. Since no failure occurs and we do not
-   evaluate throw, catch returns the result of evaluating =foo(1)=.
-*** demo(2)
-   Evaluates to ={user_error, abc}=. =throw({myerror, abc})= was evaluated
-   causing the surrounding catch to return ={myerror, abc}= and case
-   to return ={user_error, abc}=.
-*** demo(3)
-   Evaluates to ={caught_error, badarg}=. =foo(3)= fails and catch evaluates
-   to ={’EXIT’, badarg}=.
-*** demo(4)
-   Evaluates to ={caught_error, {myexit, 222}}=.
-*** demo(5)
-   Evaluates to ={caught_error,function_clause}=.
 
+*** demo(1)
+    Evaluates to hello as before. Since no failure occurs and we do not
+    evaluate throw, catch returns the result of evaluating =foo(1)=.
+*** demo(2)
+    Evaluates to ={user_error, abc}=. =throw({myerror, abc})= was evaluated
+    causing the surrounding catch to return ={myerror, abc}= and case
+    to return ={user_error, abc}=.
+*** demo(3)
+    Evaluates to ={caught_error, badarg}=. =foo(3)= fails and catch evaluates
+    to ={’EXIT’, badarg}=.
+*** demo(4)
+    Evaluates to ={caught_error, {myexit, 222}}=.
+*** demo(5)
+    Evaluates to ={caught_error, function_clause}=.
+
+* Process Termination
+  
+A process terminates normally if (not witin a catch):
+  - it completes the evaluation of the function with which if it was spawned, or 
+  - it evaluates the BIF =exit(normal)=.
+
+* Linked Processes
+
+During execution, processes can establish links to other processes. If a process
+terminates (normally or abnormally), a special =EXIT= signal is sent to all
+processes (and ports) which are currently linked to the terminating process.
+This signal has the following format:
+
+={'EXIT', Exiting_Process_Id, Reason}= 
+
+** Creating & deleting links
+
+  - Can be created by =link(Pid)= or =spawn_link(Module, Function, Args)=
+  - All process links are bidirectional
+  - All links which a process has are deleted when that process terminates.
+  - You can also use =unlink(Pid)=.
+* Run-time Failure
+
+Most common reasons for the message ={'EXIT', reason}= or 
+={'EXIT', Exiting_Process_Id, reason}= are:
+
+- =badmatch=        : Match failure, e.g. matching =1 = 3= fails.
+- =badarg=          : BIF is called with incorrect arg
+- =case_clause=     : No matching case branch
+- =if_clause=       : ..
+- =function_clause= : ..
+- =undef=           : ..
+- =badarith=        : ..
+- =timeout_value=   : A bad timeout value is given in a =receive= expr
+- =nocatch=         : A =throw= is evaluated and there is no match
+* Changing the Default Signal Reception Action
+
+=process_flag(trap_exit,true)= :
+
+Any exit signal (including ={'EXIT', normal}=) will be converted into a message
+which can be received in the same way as any other msg.
+
+[[file:link_demo.erl][Example]]
+
+* Undefined Functions & Unregistered Names
+
+If a process tries to evaluate =Mod:Func(Arg0,...,ArgN)= and that function is
+undefined, then the call is converted to:
+
+=error_handler:undefined_function(Mod, Func, [Arg0,...,ArgN])=
+
+It is assumed that the module =error_handler= has been loaded (a module with
+name =error_handler= is predefined in the standard distribution).
+
+Module =code= knows which modules have been loaded and knows how to load code.
+
+You can change the default behavior with BIF =process_flag(error_handler,
+MyMod)= where =MyMod= is the module used instead of the default =error_handler=.
+
+** Example code
+#+BEGIN_SRC erlang
+-module(error_handler).
+-export([undefined_function/3]).
+
+undefined_function(Module, Func, Args) ->
+    case code:is_loaded(Module) of
+        {file,File} ->
+            %% the module is loaded but not the function
+            io:format("error undefined function:~w ~w ~w",
+                      [Module, Func, Args]),
+            exit({undefined_function,{Module,Func,Args}});
+
+        false ->
+            case code:load_file(Module) of
+                {module, _} ->
+                    apply(Module, Func, Args);
+                {error, _} ->
+                    io:format("error undefined module:~w",
+                              [Module]),
+                    exit({undefined_module, Module})
+            end
+    end.
+
+unregistered_name(Name, Pid, Message) ->
+    unimplemented_function.
+
+#+END_SRC
+
+
+
+* Examples
+
+|----+---------------------------+--------------------|
+| No | Name                      | File               |
+|----+---------------------------+--------------------|
+| 1. | Guarding against bad data | [[file:number_analyser.erl][number analyser]]    |
+| 2. | Robust Server Processes   | [[file:resource_alloc.erl][resource allocator]] |
+| 3. | Keeping processes alive   | [[file:keep_alive2.erl][keep alive]]         |
+|----+---------------------------+--------------------|

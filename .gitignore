@@ -1,7 +1,5 @@
 *.beam
 *~
-
-# Export thingies
 *.html
 *.pdf
 *.tex
