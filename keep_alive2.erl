@@ -35,6 +35,8 @@ loop(Processes) ->
 
 new_process(Name, Mod, Func, Args) ->
     keep_alive ! {self(), {new_proc, Name, Mod, Func, Args}},
+    %% dialyzer doesn't complain about the following call
+    %% register(Name, self()),
     receive
         {keep_alive, started} ->
             true

@@ -1,6 +1,12 @@
 -module(link_demo).
 -export([start/0, demo/0, demonstrate_normal/0, demonstrate_exit/1,
-         demonstrate_error/0, demonstrate_message/1]).
+         demonstrate_error/0, demonstrate_message/1,
+         myproc/0
+        ]).
+
+myproc() ->
+    timer:sleep(3000),
+    exit(reason).
 
 start() ->
     register(demo, spawn(link_demo, demo, [])).
@@ -38,6 +44,8 @@ demonstrate_exit(What) ->
 demonstrate_message(What) ->
     demo ! What.
 
+%% dialyzer will complain that this 'has no local return'
+%% since it always raises an exception (and doesn't return anything).
 demonstrate_error() ->
     link(whereis(demo)),
     1 = 2.
