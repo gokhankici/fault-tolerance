@@ -1,3 +1,6 @@
+#+TITLE: Reading List
+#+OPTIONS: toc:t html-postamble:nil num:nil
+
 * Read
 ** Building a Distributed Fault-Tolerant Key-Value Store
 
@@ -128,6 +131,10 @@ with =(INDEX,ITEM)= where =INDEX= is the next empty slot.
 ** Paxos Made Live - An Engineering Perspective
 
 [[https://www.cs.utexas.edu/users/lorenzo/corsi/cs380d/papers/paper2-1.pdf][link]]
+
+*Abstract*: How to build fault-tolerant data base using the Paxos algorithm.
+They showed that, even though the existing literature, it's still a non-trivial
+task. They list the problems they encountered and their solutions.
 
 ** Verifying Fault-Tolerant Erlang Programs
 
