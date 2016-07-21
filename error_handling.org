@@ -132,6 +132,36 @@ unregistered_name(Name, Pid, Message) ->
 #+END_SRC
 
 
+** Prevent data race between whereis & register
+
+To register a process without data race:
+
+1. Use the [[http://erldocs.com/current/stdlib/gen_server.html?i%3D0&search%3Dgen_server][gen_server]] behaviour and call the function
+   #+BEGIN_SRC erlang
+   start_link(ServerName, Module, Args, Options)
+   #+END_SRC
+
+2. Have the spawned process register its own name, and send back a response to
+   its parent
+#+BEGIN_SRC erlang
+start() ->
+    Pid = spawn(db_server, init, [self()]),
+    receive 
+        {Pid, StartResult} ->
+            StartResult
+    end.
+
+init(Parent) ->
+    case catch register(db_server, self()) of
+        true ->
+            Parent ! {ok, started},
+            real_init();
+        Error ->
+            Parent ! {error, already_started}
+    end.
+#+END_SRC
+
+
 * Supervisors
 
 There is a single callback function to provide: =init/1=. It takes some
@@ -273,6 +303,7 @@ where the general definition is
 
 - *=which_children(SupervisorNameOrPid)=*:
   Gives you a list of all the children under the supervisor.
+
 
 * Examples
 
