@@ -1,0 +1,164 @@
+* Read
+** Building a Distributed Fault-Tolerant Key-Value Store
+
+[[http://blog.fourthbit.com/2015/04/12/building-a-distributed-fault-tolerant-key-value-store][link]]
+   
+- One coordinator per data-center, elected using a paxos-like consensus protocol.
+
+- *Hinted-handoff*: Cassandra has replication of data. When you try to write
+  data but a replica is down, the coordinator keeps an extra local copy per
+  failed replica, until it's back up.
+
+- *Committing a write*: 
+  1. Persistent memory (disk) in a commit log
+  2. In-memory memtable
+
+- Since any node can act as a request coordinator, it is necessary to keep all
+  nodes informed at all times of the other nodes in the ring. Such problem is
+  addressed by the so-called *membership protocol*.
+
+- *SWIM* (Scalable Weakly-consistent Infection-style Process Group Membership)
+
+- *Eventual consistency*: If no new updates are made, eventually all accesses to
+  that item will return the last updated value. Using *read repair*, the
+  correction is done when a read finds an inconsistent
+
+- *Always writable*: Write is like appending data with a timestamp into a file.
+  The burden of data consistency is brought to read time.
+
+- *Stabilization*: When a node fails, =key->node= mapping breaks for some keys.
+  As it fails, there will be n-1 nodes for key distribution, meaning that many
+  keys will suddenly have a different set of nodes assigned.
+  
+  A possible implementation would be iterating over all keys in a node,
+  detecting if the key still belongs to the node and if that's not the case,
+  delete it from local storage after sending it to all proper replicas.
+
+** Eventual Consistency
+
+[[https://distributedthoughts.wordpress.com/2013/09/08/eventual-consistency/][link]]
+
+#+BEGIN_SRC
+1. write(7, "A")
+2. write(7, "B")
+3. read(7)
+4. read(7)
+#+END_SRC
+
+in an eventual consistent db, all four results are legal (both lines 3 & 4 can
+return "A" or "B"). For example, line 3 can return "B" and line 4 can return
+"A", it can /disappear/.
+
+*Why?* Read/write operations can be implemented at a lower latency than strongly
+consistent databases.
+
+Requiring low latency means that if a machine receives a read operation, it
+should answer that read operation *immediately*. In other words, if it receives a
+read operation it *can’t contact another server* before responding.
+
+** Understanding Paxos
+
+[[https://distributedthoughts.wordpress.com/2013/09/22/understanding-paxos-part-1/][link]]
+
+Possible *API* formalization:
+  * =add(item)= : tries to add item to the log, and returns the index (or -1)
+  * =get(index)= : returns the item at the given index (or =null=)
+  * an event triggered each time an item is added, providing the item and its
+    index as parameters
+
+When you have only 2 nodes, due to the [[http://en.wikipedia.org/wiki/Split-brain_(computing)][split brain]] problem, you can't store data
+in a fault resilient manner. *Paxos ensures that* no matter what if data is
+written, it will eventually propagato to all the nodes and there won't be any
+nodes that think some index contains different values (conflicting log records).
+
+*Paxos assumes that*:
+  * the content of messages aren't changed after they're sent
+  * nodes run the algorithm as instructed (no bugs, hackers, etc.)
+  * nodes have persistent storage
+
+*Paxos ensures "safety" even if*:
+  * messages are dropped or duplicated
+  * some (or all) of the nodes crash or restart
+
+#+BEGIN_QUOTE
+/Paxos always guarantees "safety", while ensuring "liveness" if a majority of the
+nodes are communicating with each other./
+#+END_QUOTE
+  
+Paxos has *three main blocks*:
+  1. Leader election protocol - to decide which node is running the show
+  2. Consensus on a single log entry (called *Synod*) - preserves "safety"
+  3. A protocol for managing the entire log - what entries should be added
+
+A *bird's eye view* of the algorithm:
+  * continuously (every X seconds) run the leader election algorithm, so all
+    nodes know who's in charge (Paxos doesn't specify which algorithm to use)
+  * when the leader receives a request to add a log item =ITEM=, it selects the
+    next empty log index =INDEX=, and initiates a consensus on adding
+    =(INDEX,ITEM)= to the log.
+  * when a consensus is initiated to add =(INDEX,ITEM)=, all nodes participate
+    in it, eventually agreeing that item =ITEM= was added to the log at index
+    =INDEX=.
+
+If *more than one leader* is elected, and two different leaders initiate a
+consensus on =(INDEX,ITEM1)= and =(INDEX,ITEM2)=, Synod algorithm will choose
+only one of them.
+
+When the leader is elected, it goes over the log and sees if there are any
+*holes* in it. Assume that index 17 is empty, the leader would then initiate the
+Synod algorithm with the value =(17,EMPTY)=, and the algorithm will reach to a
+consensus on the value =(17,EMPTY)= or =(17,VALUE)= for some previously proposed
+value.
+
+Once there are *no more holes*, the leader can start processing writes: for each
+request to add an item to the log, the leader initiates the consensus algorithm
+with =(INDEX,ITEM)= where =INDEX= is the next empty slot.
+
+*To sum up*, Paxos:
+1. is a highly resilient algorithm providing an abstraction of a
+   distributed log.
+2. assumes some mechanism of electing a leader.
+3. ensures that data log is consistent, even if there are none or multiple
+   leaders.
+4. will be able to perform writes, if more than half of the nodes can
+   communicate.
+
+
+* Unread
+** Paxos Made Live - An Engineering Perspective
+
+[[https://www.cs.utexas.edu/users/lorenzo/corsi/cs380d/papers/paper2-1.pdf][link]]
+
+** Verifying Fault-Tolerant Erlang Programs
+
+ftp://ftp.inrialpes.fr/pub/vasy/publications/others/Benac-Fredlund-Derrick-05.pdf
+
+** Analysing Fault Tolerance for Erlang Applications
+
+https://uu.diva-portal.org/smash/get/diva2:213697/FULLTEXT01.pdf
+
+** Verifying fault-tolerant Erlang programs
+
+https://www.researchgate.net/publication/221211408_Verifying_fault-tolerant_Erlang_programs
+
+** SMT and POR beat Counter Abstraction: Parametrized Model Checking of Threshold-Based Distributed Algorithms
+
+http://forsyte.at/download/konnov-cav15.pdf
+
+** What You Always Wanted to Know About Model Checking of Fault-Tolerant Distributed Algorithms
+
+https://www.researchgate.net/publication/304480515_What_You_Always_Wanted_to_Know_About_Model_Checking_of_Fault-Tolerant_Distributed_Algorithms
+
+** Experience with Rules-Based Programming for Distributed, Concurrent, Fault-Tolerant Code
+
+https://www.usenix.org/system/files/conference/atc15/atc15-paper-stutsman.pdf
+
+** What's Decidable About Arrays?
+
+[[http://www-step.stanford.edu/papers/avmcai06.pdf][link]]
+
+** Counting Constraints in Flat Array Fragments
+
+[[https://link.springer.com/chapter/10.1007/978-3-319-40229-1_6][link]]
+
+
