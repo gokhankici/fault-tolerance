@@ -1,5 +1,14 @@
+# -*- mode: org; -*-
 #+TITLE: Reading List
-#+OPTIONS: toc:t html-postamble:nil num:nil
+#+OPTIONS: toc:t html-postamble:nil
+
+# read the org 
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/readtheorg/css/htmlize.css"/>
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/readtheorg/css/readtheorg.css"/>
+#+HTML_HEAD: <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+#+HTML_HEAD: <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/lib/js/jquery.stickytableheaders.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/readtheorg/js/readtheorg.js"></script>
 
 * Read
 ** Building a Distributed Fault-Tolerant Key-Value Store
@@ -201,7 +210,6 @@ one.
   any value from being chosen. However, *safety is preserved*. And election of a
   *single leader is needed only to ensure progress*.
 
-* Unread
 ** Paxos Made Live - An Engineering Perspective
 
 [[https://www.cs.utexas.edu/users/lorenzo/corsi/cs380d/papers/paper2-1.pdf][link]]
@@ -272,21 +280,6 @@ Details:
 5. If a consensus was achieved by the previous coordinator, the new one *obeys* it
    (since it waits for a promise message from the majority of the nodes).
    
-#+BEGIN_SRC 
-Client   Proposer      Acceptor
-   |         |          |  |  |
-   X-------->|          |  |  |   Request
-   |         |          |  |  |
-   |         X--------->|->|->|   Propose(1)
-   |         |<---------X--X--X   Promise(1,{Va,Vb,Vc})
-   |         |          |  |  |
-   |         X--------->|->|->|   Accept!(1,Vn)
-   |         |<---------X--X--X   Acknowledgment(1,Vn)
-   |         |          |  |  |
-   |<-------------------X--X--X   Commit
-   |         |          |  |  |
-#+END_SRC
-
 *** Multi-Paxos
 
 After a crash, the replica *replays* the persistent log to catch up.
@@ -303,10 +296,267 @@ Using this requires *only one write* to disk per Paxos instance:
 - Master writes to disk immediately after sending an accept message
 - Others write to disk prior to sending their acknowledge message
 
+#+BEGIN_SRC 
+%%% MULTI PAXOS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Client   Proposer      Acceptor     Learner
+   |         |          |  |  |       |  | --- First Request ---
+   X-------->|          |  |  |       |  |  Request
+   |         |          |  |  |       |  |
+   |         X--------->|->|->|       |  |  Prepare(N)
+   |         |<---------X--X--X       |  |  Promise(N,I,{Va,Vb,Vc})
+   |         |          |  |  |       |  |
+   |         X--------->|->|->|       |  |  Accept!(N,I,Vm)
+   |         |<---------X--X--X------>|->|  Accepted(N,I,Vm)
+   |         |          |  |  |       |  |
+   |<---------------------------------X--X  Response
+   |         |          |  |  |       |  |
+#+END_SRC
+
 *** Challenges
 
-Disk corruption:
+**** Disk corruption
+- Either the file content may change or file may become inaccessible.
 
+- In the case of corruption, use check-sum
+
+- Disk rebuild is done by participating in Paxos as a non-voting member; it
+  doesn't respond to promise or acknowledgment messages
+
+- Since we can allow disk corruption, it may be acceptable not to flush writes
+  to disk immediately
+
+**** Master leases
+- In basic Paxos, clients cannot read from master since other replicas can elect
+  another master and modify the data structure without notifying the old master.
+
+- The workaround is to implement /master leases/. As long as the master has the
+  lease, it's guaranteed that other replicas cannot successfully submit values
+  to Paxos. Thus, master with the lease has up-to-date information in its local
+  data.
+  
+- The master periodically submits a dummy "heartbeat" value to Paxos to refresh
+  its lease.
+
+- Problem: When a master temporarily disconnects, Paxos will elect a new master.
+  The new master will maintain a fixed sequence number across instances of
+  Paxos. In the mean time, when the disconnected old master tries to run the
+  Paxos algorithm, if it *manages to connect with another replica*, it may
+  *increase its sequence number*.
+  
+  - In their implementation, the master periodically boosts its sequence number
+    by running a full round of Paxos algorithm. Boosting with the right
+    frequency generally avoids this case.
+
+**** Epoch numbers
+
+- Chubby requires an incoming request to be aborted since the mastership can be
+  lost and/or re-acquired during the handling of the request.
+
+- So they needed to detect master turnover and abort operations if necessary
+
+- They've solved this problem by using *epoch numbers*: Two requests for the
+  epoch number at the master replica receive the same value iff that replica was
+  master continuously for the time interval between the two requests.
+
+- The epoch number is stored as an entry in the database, and all database
+  operations are made conditional on the value of the epoch number.
+
+**** Group membership
+
+- Systems must be able to handle changes in the set of replicas, which is
+  referred as the *group membership*.
+- This is trivial for basic Paxos, but the details are non-trivial for the
+  Multi-Paxos case with disk corruptions, etc.
+- They had to fill these details by themselves, which they don't mention in the
+  paper.
+
+**** Snapshots
+
+- The log can grow indefinitely which requires *unbounded disk space* and
+  *unbounded recovery time* after a failure. One way is to persist the changes
+  in the log directly, which is called a /snapshot/.
+
+- Since Paxos only worries about the replicated log, the application itself
+  should figure out how to create those snapshots.
+
+- The fault-tolerant database informs the framework that a snapshot was taken;
+  and it's is free to take a snapshot at any point. 
+
+- When the Paxos framework is informed about a snapshot, it will truncate its
+  log by deleting log entries that precede the snapshot.
+
+- During recovery replica will install the latest snapshot and then replay the
+  truncated log to rebuild its state. 
+
+- Snapshots are not synchronized across replicas; each replica independently
+  decides when to create a snapshot.
+  
+- *Problems:* Persistent state of the replica now contains the log, and
+  snapshots have to be maintained consistently.
+
+- Snapshots and logs need to be mutually consistent ==> Snapshot handle
+
+- Taking a snapshot takes time, so it's split into 3 phases. The replica:
+  1. Requests a *snapshot handle*. It contains the Paxos instance number
+     corresponding to the snapshot and the group membership at that point.
+  2. *Takes a snapshot*. It may block the system while taking the snapshot, or
+     (more likely) spawn a thread that takes a snapshot while the replica
+     continues to participate in Paxos. It's important to keep the local data
+     consistent while participating in Paxos.
+  3. When the snapshot has been taken, the client application *informs* the
+     framework about the snapshot and passes the corresponding snapshot handle.
+     The framework then truncates the log appropriately.
+
+- Taking a snapshot may *fail*, so the framework truncates the log when it
+  receives a snapshot handle.
+
+- While in *catch-up*, a replica will attempt to obtain missing log records. If
+  it cannot obtain them (because no replica has old-enough log entries), the
+  replica will be told to *obtain a snapshot* from another replica.
+
+  Note that a leading replica may even *create a new snapshot* while a lagging
+  replica is installing an *older snapshot*. In this case, the lagging replica
+  may not be able to obtain any outstanding log records because the snapshot
+  provider may have moved ahead. The lagging replica will need to obtain a more
+  recent snapshot.
+  
+  Furthermore, the *leading replica may fail* after sending its snapshot. The
+  catch-up mechanism must be able to recover from such problems by having the
+  lagging replica contact another leading replica.
+  
+- A mechanism to *locate recent snapshots* is needed.
+  
+**** Database transactions
+     
+- *Chubby* stores key-value pairs, and supports =insert=, =delete=, =lookup=, =cas=
+  (atomic compare & swap), and iteration over all entries.
+
+- The =cas= operation needed to be atomic with respect to other database
+  operations issued by a different replica. It was achieved by *submitting all
+  =cas=-related data as a single value* to Paxos. This mechanism is extended to
+  provide transaction-style support without having to implement true database
+  transactions.
+
+- A primitive called =MultiOp= is used to implement all database functionality
+  (except iteration). It consists of 3 components:
+
+  1. A list of tests called *guard*. Each test in =guard= checks a single db
+     entry. If all tests are true, =MultiOp= executes =t_op=, otherwise it
+     executes =f_op=.
+
+  2. A list of db operations called =t_op=. Each operation is either =insert=,
+     =delete=, or =lookup=, and applies to a single db entry.
+
+  3. A list of db operations called =f_op=, which is like =t_op=.
+
+*** Software Engineering
+    
+**** Expressing the algorithm effectively
+
+- They've coded the *core algorithm* as two state machines. They designed a
+  simple statemachine specification language and built a compiler to translate
+  such specifications into C++.
+
+- Choosing a *specification language* makes it *easier to reason about and
+  modify* our state machines than an explicitly coded implementation that is
+  intermingled with the rest of the system.
+  
+  - They share their experience where they moved from 3 states to 2 states in
+    the group membership algorithm. It took them about *one hour to make this
+    change* and *three days to modify their tests* accordingly.
+
+**** Runtime consistency checking
+
+- The master periodically submits a *checksum request* to the database log. On
+  receipt of this request, each replica computes a checksum of its local
+  database (they used a shadow data structure to handle db operations
+  concurrently).
+- After the master completes a checksum computation, it sends its checksum to
+  all replicas which *compare* the master’s checksum with their computed checksum.
+- They had 3 db inconsistency incidents:
+  - First was operator error
+  - Second was probably due to hardware memory corruption
+  - Third was probably due to illegal memory access from errant code.
+
+**** Testing
+     
+- Tests have 2 modes: *safety* and *liveness*.
+
+- Tests start in safety mode and *inject random failures* into the system. After
+  running for a predetermined period of time, they stop injecting failures and
+  give the system time to fully recover. Then they switch the test to liveness
+  mode. The purpose for the liveness test is to verify that the system does not
+  deadlock after a sequence of failures.
+
+- Fault-tolerant systems try to *mask problems*. Thus, they can mask bugs or
+  configuration problems while *lowering their own fault-tolerance*.
+  - They tell the story of a typo in the configuration that result in a scenario
+    where one of the five replicas always run in catch-up mode (which appears
+    correct). This made the system tolerate only one faulty component (instead
+    of two).
+
+**** Concurrency
+
+They claim that they set the "right goals" for repeatability of executions by
+*constraining concurrency*. Unfortunately, as the product needs grew they were
+unable to adhere to these goals, and added more concurrency support (to take
+snapshots, compute checksums and process iterators while concurrently serving
+database requests).
+
+*** Unexpected Failures
+    
+These are the failures they've faced when they tried to move from the 3DB
+version of Chubby to Paxos version during the course of *100 machine years*:
+
+- First release shipped with ten times the number of worker threads as the
+  original Chubby system. Under load, the worker threads ended up *starving*
+  some other key threads and caused the system to time out frequently. This
+  resulted in rapid master fail over, which resulted in a *cycle* of new master
+  election, and master fail over. They've lost 15 hours of data.
+
+- They had to address the changes in the difference in semantics. For example,
+  if Chubby submitted an operation to the db, and the db lost its master status,
+  Chubby expected the operation to fail. However, in the new system a replica
+  could be re-installed as master, and operation could succeed. The fix took a
+  substantial work and required the use of *epoch numbers* and =MultiOp=.
+ 
+- They also had issues regarding to the OS: In Linux 2.4 kernel, when they try
+  to flush a small file to disk, the call can hang for a long time if there are
+  a lot of buffered writes to other files. The workaround was to write all large
+  files in chunk.
+  
+- In total:
+  - 3 failures occurred during upgrade (or rollback).
+  - 2 were from bugs
+  - 2 were due to operator errors. While they are very competent, they are
+    usually not part of the development team that built the system, and
+    therefore not familiar with its intricate details.
+  - 1 was due to memory corruption
+
+*** Measurements
+    
+- Tests ran two copies of Chubby on the same set of 5 servers (typical
+  Pentium-class machines).
+- Speed-up is between 1.2x to 4.4x
+
+*** Open Problems
+    
+- There are *significant gaps* between the description of the Paxos algorithm
+  and the needs of a real-world system. In order to build a real-world system,
+  an expert needs to *use numerous ideas scattered in the literature* and make
+  several relatively small protocol extensions. The cumulative effort will be
+  substantial and the final system will be based on an *unproven protocol*.
+ 
+- The fault-tolerance computing community *has not developed the tools* to make
+  it easy to implement their algorithms.
+
+- The fault-tolerance computing community *has not paid enough attention to
+  testing*, a key ingredient for building fault-tolerant systems.
+
+* Unread
+** Verdi: a framework for implementing and formally verifying distributed systems
+** Ivy: Safety Verification by Interactive Generalization
 ** Verifying Fault-Tolerant Erlang Programs
 
 ftp://ftp.inrialpes.fr/pub/vasy/publications/others/Benac-Fredlund-Derrick-05.pdf
