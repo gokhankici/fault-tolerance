@@ -1,4 +1,3 @@
-# -*- mode: org; -*-
 #+TITLE: Reading List
 #+OPTIONS: toc:t html-postamble:nil
 
@@ -556,30 +555,75 @@ version of Chubby to Paxos version during the course of *100 machine years*:
 
 * Unread
 ** Verdi: a framework for implementing and formally verifying distributed systems
+
+[[http://verdi.uwplse.org/verdi.pdf][link]]
+
+*** Introduction 
+
+- Few practical distributed system implementations have been formally verified.
+  For performance reasons, real-world implementations often diverge in important
+  ways from their high-level descriptions. So, goal is to *verify working code*.
+  *Coq* is used to both write and verify the system.
+
+- Distributed systems run in a diverse range of environments. Thus, it must support
+  verifying applications against *different fault models*. It's specified as
+  *network semantics*.
+
+- Verdi aims to help the programmer separately prove correctness of application
+  level behavior and correctness of fault tolerance mechanisms, and to allow
+  these proofs to be easily *composed*.
+
+  - They introduce *verified system transformers*, which is a function whose input
+    is an implementation of a system and whose output is a *new system
+    implementation* that makes different assumptions about its environment.
+
+  - For example, a Verdi programmer can first build and verify a system assuming a
+    reliable network, and then apply a transformer to obtain another version of
+    their system that correctly and provably tolerates faults in an unreliable
+    network.
+
+- They implemented and verified 
+  - a key-value store,
+  - a primary-backup replication transformer 
+  - first formally verified proof of linearizability for the Raft consensus protocol
+
+- *Recent bug*: In April 2011 a malfunction of failure recovery in EC2 caused a
+  major outage and brought down several web sites, including Foursquare, Reddit,
+  Quora, and PBS.
+
+**** TODO what is a replication transformer ?
+     
+*** Overview
+    
+
+
 ** Ivy: Safety Verification by Interactive Generalization
+   
+[[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
+
 ** Verifying Fault-Tolerant Erlang Programs
 
-ftp://ftp.inrialpes.fr/pub/vasy/publications/others/Benac-Fredlund-Derrick-05.pdf
+[[ftp://ftp.inrialpes.fr/pub/vasy/publications/others/Benac-Fredlund-Derrick-05.pdf][link]]
 
-** Analysing Fault Tolerance for Erlang Applications
+** Analyzing Fault Tolerance for Erlang Applications
 
-https://uu.diva-portal.org/smash/get/diva2:213697/FULLTEXT01.pdf
+[[https://uu.diva-portal.org/smash/get/diva2:213697/FULLTEXT01.pdf][link]]
 
 ** Verifying fault-tolerant Erlang programs
 
-https://www.researchgate.net/publication/221211408_Verifying_fault-tolerant_Erlang_programs
+[[https://www.researchgate.net/publication/221211408_Verifying_fault-tolerant_Erlang_programs][link]]
 
 ** SMT and POR beat Counter Abstraction: Parametrized Model Checking of Threshold-Based Distributed Algorithms
 
-http://forsyte.at/download/konnov-cav15.pdf
+[[http://forsyte.at/download/konnov-cav15.pdf][link]]
 
 ** What You Always Wanted to Know About Model Checking of Fault-Tolerant Distributed Algorithms
 
-https://www.researchgate.net/publication/304480515_What_You_Always_Wanted_to_Know_About_Model_Checking_of_Fault-Tolerant_Distributed_Algorithms
+[[https://www.researchgate.net/publication/304480515_What_You_Always_Wanted_to_Know_About_Model_Checking_of_Fault-Tolerant_Distributed_Algorithms][link]]
 
 ** Experience with Rules-Based Programming for Distributed, Concurrent, Fault-Tolerant Code
 
-https://www.usenix.org/system/files/conference/atc15/atc15-paper-stutsman.pdf
+[[https://www.usenix.org/system/files/conference/atc15/atc15-paper-stutsman.pdf][link]]
 
 ** What's Decidable About Arrays?
 
