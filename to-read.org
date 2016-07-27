@@ -1,26 +1,32 @@
 #+TITLE: Reading List
-#+OPTIONS: toc:t html-postamble:nil
+#+OPTIONS: toc:t html-postamble:nil tex:t
 
-# read the org 
-#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/readtheorg/css/htmlize.css"/>
-#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/readtheorg/css/readtheorg.css"/>
-#+HTML_HEAD: <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
-#+HTML_HEAD: <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
-#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/lib/js/jquery.stickytableheaders.js"></script>
-#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/readtheorg/js/readtheorg.js"></script>
+# bigblow
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/bigblow/css/htmlize.css"/>
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/bigblow/css/bigblow.css"/>
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/bigblow/css/hideshow.css"/>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/jquery-1.11.0.min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/jquery-ui-1.10.2.min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/jquery.localscroll-min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/jquery.scrollTo-1.4.3.1-min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/jquery.zclip.min.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/bigblow.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/bigblow/js/hideshow.js"></script>
+#+HTML_HEAD: <script type="text/javascript" src="http://www.pirilampo.org/styles/lib/js/jquery.stickytableheaders.min.js"></script>
+
 
 * Read
 ** Building a Distributed Fault-Tolerant Key-Value Store
 
 [[http://blog.fourthbit.com/2015/04/12/building-a-distributed-fault-tolerant-key-value-store][link]]
-   
+
 - One coordinator per data-center, elected using a paxos-like consensus protocol.
 
 - *Hinted-handoff*: Cassandra has replication of data. When you try to write
   data but a replica is down, the coordinator keeps an extra local copy per
   failed replica, until it's back up.
 
-- *Committing a write*: 
+- *Committing a write*:
   1. Persistent memory (disk) in a commit log
   2. In-memory memtable
 
@@ -40,7 +46,7 @@
 - *Stabilization*: When a node fails, =key->node= mapping breaks for some keys.
   As it fails, there will be n-1 nodes for key distribution, meaning that many
   keys will suddenly have a different set of nodes assigned.
-  
+
   A possible implementation would be iterating over all keys in a node,
   detecting if the key still belongs to the node and if that's not the case,
   delete it from local storage after sending it to all proper replicas.
@@ -95,7 +101,7 @@ nodes that think some index contains different values (conflicting log records).
 /Paxos always guarantees "safety", while ensuring "liveness" if a majority of the
 nodes are communicating with each other./
 #+END_QUOTE
-  
+
 Paxos has *three main blocks*:
   1. Leader election protocol - to decide which node is running the show
   2. Consensus on a single log entry (called *Synod*) - preserves "safety"
@@ -187,11 +193,11 @@ one.
 *Implementing a State Machine:*
 
 - When a new leader is selected, it tries to fill its gaps first by running the
-  phase 1 of the algorithm for those instances. 
+  phase 1 of the algorithm for those instances.
 
   It'll either figure out the value, or realize that they're unused and declare
   them as "no-op" in the phase 2 of those instances.
-  
+
   - _Example:_ Assume that it knows the values 1-134, 138 & 139. Then it'll run
     phase 1 for 135-137 and of all instances greater than 139. As long as enough
     of the system (acceptors and the communication network) is working properly,
@@ -220,7 +226,7 @@ They showed that, even though the existing literature, it's still a non-trivial
 task. They list the problems they encountered and their solutions.
 
 *** Introduction
-    
+
 - A page of Paxos code resulted in *several thousands of C++ code*, due to the
   implementation of many features and optimizations.
 
@@ -229,10 +235,10 @@ task. They list the problems they encountered and their solutions.
   system, different methods had to be used.
 
 - Algorithms tolerate a *limited set of faults*.
-  
+
 - A real system is *rarely specified precisely*. Specification may change during
   implementation, fail due to a misunderstanding during its specification phase.
-  
+
 *** Architecture
 
 - *Fault-tolerant replicated log*: Based on the Paxos algorithm. Each replica
@@ -245,9 +251,9 @@ task. They list the problems they encountered and their solutions.
 
 - Chubby clients communicate with a *single Chubby replica* through a
   Chubby-specific protocol.
-  
+
 - The log is general enough to be used in other systems.
-  
+
 *** Basic Paxos
 Algorithm:
 
@@ -261,8 +267,8 @@ Algorithm:
 Details:
 1. Multiple replicas may decide to become coordinators.
 
-2. It assigns an *ordering* to successive coordinators. 
-   
+2. It assigns an *ordering* to successive coordinators.
+
    For example, if there are n replicas, each one is assigned an id $i_r$ between
    0 and (n-1). When they want to be the new coordinator, they pick a value $s$
    that is greater than anything *it has seen so far* and $s \mod i_r = 0$.
@@ -270,7 +276,7 @@ Details:
 3. After generating a new id, it's broadcast to all replicas in a /propose/
    message. If the replicas agree (that they haven't seen a coordinator with a
    higher number), they respond with a /promise/ message.
-  
+
 4. *Promise messages also contain the latest value they heard of* with the id of
    the coordinator (if any). The new coordinator picks the value of the most
    recent one. If none of the promise messages contain a value, it's free to pick
@@ -278,7 +284,7 @@ Details:
 
 5. If a consensus was achieved by the previous coordinator, the new one *obeys* it
    (since it waits for a promise message from the majority of the nodes).
-   
+
 *** Multi-Paxos
 
 After a crash, the replica *replays* the persistent log to catch up.
@@ -295,7 +301,7 @@ Using this requires *only one write* to disk per Paxos instance:
 - Master writes to disk immediately after sending an accept message
 - Others write to disk prior to sending their acknowledge message
 
-#+BEGIN_SRC 
+#+BEGIN_SRC
 %%% MULTI PAXOS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 Client   Proposer      Acceptor     Learner
@@ -333,7 +339,7 @@ Client   Proposer      Acceptor     Learner
   lease, it's guaranteed that other replicas cannot successfully submit values
   to Paxos. Thus, master with the lease has up-to-date information in its local
   data.
-  
+
 - The master periodically submits a dummy "heartbeat" value to Paxos to refresh
   its lease.
 
@@ -342,7 +348,7 @@ Client   Proposer      Acceptor     Learner
   Paxos. In the mean time, when the disconnected old master tries to run the
   Paxos algorithm, if it *manages to connect with another replica*, it may
   *increase its sequence number*.
-  
+
   - In their implementation, the master periodically boosts its sequence number
     by running a full round of Paxos algorithm. Boosting with the right
     frequency generally avoids this case.
@@ -380,17 +386,17 @@ Client   Proposer      Acceptor     Learner
   should figure out how to create those snapshots.
 
 - The fault-tolerant database informs the framework that a snapshot was taken;
-  and it's is free to take a snapshot at any point. 
+  and it's is free to take a snapshot at any point.
 
 - When the Paxos framework is informed about a snapshot, it will truncate its
   log by deleting log entries that precede the snapshot.
 
 - During recovery replica will install the latest snapshot and then replay the
-  truncated log to rebuild its state. 
+  truncated log to rebuild its state.
 
 - Snapshots are not synchronized across replicas; each replica independently
   decides when to create a snapshot.
-  
+
 - *Problems:* Persistent state of the replica now contains the log, and
   snapshots have to be maintained consistently.
 
@@ -419,15 +425,15 @@ Client   Proposer      Acceptor     Learner
   may not be able to obtain any outstanding log records because the snapshot
   provider may have moved ahead. The lagging replica will need to obtain a more
   recent snapshot.
-  
+
   Furthermore, the *leading replica may fail* after sending its snapshot. The
   catch-up mechanism must be able to recover from such problems by having the
   lagging replica contact another leading replica.
-  
+
 - A mechanism to *locate recent snapshots* is needed.
-  
+
 **** Database transactions
-     
+
 - *Chubby* stores key-value pairs, and supports =insert=, =delete=, =lookup=, =cas=
   (atomic compare & swap), and iteration over all entries.
 
@@ -450,7 +456,7 @@ Client   Proposer      Acceptor     Learner
   3. A list of db operations called =f_op=, which is like =t_op=.
 
 *** Software Engineering
-    
+
 **** Expressing the algorithm effectively
 
 - They've coded the *core algorithm* as two state machines. They designed a
@@ -460,7 +466,7 @@ Client   Proposer      Acceptor     Learner
 - Choosing a *specification language* makes it *easier to reason about and
   modify* our state machines than an explicitly coded implementation that is
   intermingled with the rest of the system.
-  
+
   - They share their experience where they moved from 3 states to 2 states in
     the group membership algorithm. It took them about *one hour to make this
     change* and *three days to modify their tests* accordingly.
@@ -479,7 +485,7 @@ Client   Proposer      Acceptor     Learner
   - Third was probably due to illegal memory access from errant code.
 
 **** Testing
-     
+
 - Tests have 2 modes: *safety* and *liveness*.
 
 - Tests start in safety mode and *inject random failures* into the system. After
@@ -504,7 +510,7 @@ snapshots, compute checksums and process iterators while concurrently serving
 database requests).
 
 *** Unexpected Failures
-    
+
 These are the failures they've faced when they tried to move from the 3DB
 version of Chubby to Paxos version during the course of *100 machine years*:
 
@@ -519,12 +525,12 @@ version of Chubby to Paxos version during the course of *100 machine years*:
   Chubby expected the operation to fail. However, in the new system a replica
   could be re-installed as master, and operation could succeed. The fix took a
   substantial work and required the use of *epoch numbers* and =MultiOp=.
- 
+
 - They also had issues regarding to the OS: In Linux 2.4 kernel, when they try
   to flush a small file to disk, the call can hang for a long time if there are
   a lot of buffered writes to other files. The workaround was to write all large
   files in chunk.
-  
+
 - In total:
   - 3 failures occurred during upgrade (or rollback).
   - 2 were from bugs
@@ -534,19 +540,19 @@ version of Chubby to Paxos version during the course of *100 machine years*:
   - 1 was due to memory corruption
 
 *** Measurements
-    
+
 - Tests ran two copies of Chubby on the same set of 5 servers (typical
   Pentium-class machines).
 - Speed-up is between 1.2x to 4.4x
 
 *** Open Problems
-    
+
 - There are *significant gaps* between the description of the Paxos algorithm
   and the needs of a real-world system. In order to build a real-world system,
   an expert needs to *use numerous ideas scattered in the literature* and make
   several relatively small protocol extensions. The cumulative effort will be
   substantial and the final system will be based on an *unproven protocol*.
- 
+
 - The fault-tolerance computing community *has not developed the tools* to make
   it easy to implement their algorithms.
 
@@ -558,7 +564,7 @@ version of Chubby to Paxos version during the course of *100 machine years*:
 
 [[http://verdi.uwplse.org/verdi.pdf][link]]
 
-*** Introduction 
+*** Introduction
 
 - Few practical distributed system implementations have been formally verified.
   For performance reasons, real-world implementations often diverge in important
@@ -582,9 +588,9 @@ version of Chubby to Paxos version during the course of *100 machine years*:
     their system that correctly and provably tolerates faults in an unreliable
     network.
 
-- They implemented and verified 
+- They implemented and verified
   - a key-value store,
-  - a primary-backup replication transformer 
+  - a primary-backup replication transformer
   - first formally verified proof of linearizability for the Raft consensus protocol
 
 - *Recent bug*: In April 2011 a malfunction of failure recovery in EC2 caused a
@@ -592,13 +598,96 @@ version of Chubby to Paxos version during the course of *100 machine years*:
   Quora, and PBS.
 
 **** TODO what is a replication transformer ?
-     
+
 *** Overview
-    
+
+- Programmer provides the specification, implementation (naming of nodes, IO for
+  each node + msg that it responds to, state of each node, msg handling code
+  that each node runs), and verification of this implementation that runs on a
+  *idealized reliable model*.
+
+- Then a target network semantics that reflects environment's fault model is
+  selected, and a VST is applied to the implementation to transform it into one
+  that is correct in that fault model. This transformation also produces updated
+  versions of the specification and proof.
+
+- The following are the steps taken to implement a lock service (one server):
+
+**** Specification
+
+- Correct behavior is specified in terms of *traces*
+
+\begin{align*}
+mutex(\tau) := & \tau = \tau_1 \mathtt{++}
+\langle n_1, \mathtt{Grant} \rangle \mathtt{++}
+\tau_2 \mathtt{++}
+\langle n_2, \mathtt{Grant} \rangle
+\mathtt{++} \tau_3 \\
+& \rightarrow \langle n_1, \mathtt{Unlock} \rangle \in \tau_2
+\end{align*}
+
+#+BEGIN_SRC ocaml
+(* 1 - node identifiers *)
+Name := Server | Agent(int)
+
+(* 2 - API, also known as external IO *)
+Inp := Lock | Unlock
+Out := Grant
+(* 2 - network messages *)
+Msg := LockMsg | UnlockMsg | GrantMsg
+
+(* 3 - state *)
+State (n: Name) :=
+  match n with
+  | Server => list Name (* head = agent holding lock *)
+                        (* tail = agents waiting for lock *)
+  | Agent n => bool     (* true iff this agent holds lock *)
+
+InitState (n: Name) : State n :=
+  match n with
+  | Server => []
+  | Agent n => false
+
+(* 4 - handler for external input *)
+HandleInp (n: Name) (s: State n) (inp: Inp) :=
+  match n with
+  | Server => nop                 (* server performs no external IO *)
+  | Agent n =>
+    match inp with
+    | Lock =>                     (* client requests lock *)
+        send (Server, LockMsg)    (* forward to Server *)
+    | Unlock =>                   (* client requests unlock *)
+      if s == true then (         (* if lock held *)
+        s := false;;              (* update state *)
+        send (Server, UnlockMsg)) (* tell Server lock freed *)
+
+(* 4 - handler for network messages *)
+HandleMsg (n: Name) (s: State n) (src: Name) (msg: Msg) :=
+  match n with
+  | Server =>
+    match msg with
+    | LockMsg =>
+        (* if lock not held, immediately grant *)
+        if s == [] then send (src, GrantMsg);;
+        (* add requestor to end of queue *)
+        s := s ++ [src]
+    | UnlockMsg =>
+      (* head of queue no longer holds lock *)
+      s := tail s;;
+      (* grant lock to next waiting agent, if any *)
+      if s != [] then send (head s, GrantMsg)
+    | _ => nop (* never happens *)
+  | Agent n =>
+    match msg with
+    | GrantMsg =>               (* lock acquired *)
+      s := true;;               (* update state *)
+      output Grant              (* notify listeners *)
+     | _ => nop                 (* never happens *)
+#+END_SRC
 
 
 ** Ivy: Safety Verification by Interactive Generalization
-   
+
 [[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
 
 ** Verifying Fault-Tolerant Erlang Programs
