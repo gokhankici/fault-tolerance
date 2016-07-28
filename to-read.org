@@ -566,6 +566,10 @@ version of Chubby to Paxos version during the course of *100 machine years*:
 
 *** Introduction
 
+- In April 2011 a malfunction of failure recovery in EC2 caused a major outage
+  and brought down several web sites, including Foursquare, Reddit, Quora, and
+  PBS.
+
 - Few practical distributed system implementations have been formally verified.
   For performance reasons, real-world implementations often diverge in important
   ways from their high-level descriptions. So, goal is to *verify working code*.
@@ -593,11 +597,11 @@ version of Chubby to Paxos version during the course of *100 machine years*:
   - a primary-backup replication transformer
   - first formally verified proof of linearizability for the Raft consensus protocol
 
-- *Recent bug*: In April 2011 a malfunction of failure recovery in EC2 caused a
-  major outage and brought down several web sites, including Foursquare, Reddit,
-  Quora, and PBS.
+- Verdi *decouples* the verification of application-level guarantees from the
+  implementation and verification of fault-tolerance mechanisms.
 
-**** TODO what is a replication transformer ?
+- Verdi *DOESN'T SUPPORT* liveness properties *OR* capture Byzantine fault
+  models.
 
 *** Overview
 
@@ -616,7 +620,7 @@ version of Chubby to Paxos version during the course of *100 machine years*:
 **** Specification
 
 - Correct behavior is specified in terms of *traces*
-
+  
 \begin{align*}
 mutex(\tau) := & \tau = \tau_1 \mathtt{++}
 \langle n_1, \mathtt{Grant} \rangle \mathtt{++}
@@ -626,17 +630,23 @@ mutex(\tau) := & \tau = \tau_1 \mathtt{++}
 & \rightarrow \langle n_1, \mathtt{Unlock} \rangle \in \tau_2
 \end{align*}
 
+**** Implementation
+     
+Names of the nodes in the system
 #+BEGIN_SRC ocaml
-(* 1 - node identifiers *)
 Name := Server | Agent(int)
+#+END_SRC
 
-(* 2 - API, also known as external IO *)
+IO (external) defines the API of the service
+#+BEGIN_SRC ocaml
 Inp := Lock | Unlock
 Out := Grant
 (* 2 - network messages *)
 Msg := LockMsg | UnlockMsg | GrantMsg
+#+END_SRC
 
-(* 3 - state *)
+States of the nodes are defined and initialized
+#+BEGIN_SRC ocaml
 State (n: Name) :=
   match n with
   | Server => list Name (* head = agent holding lock *)
@@ -647,8 +657,10 @@ InitState (n: Name) : State n :=
   match n with
   | Server => []
   | Agent n => false
+#+END_SRC
 
-(* 4 - handler for external input *)
+Handlers for the external inputs are implemented
+#+BEGIN_SRC ocaml
 HandleInp (n: Name) (s: State n) (inp: Inp) :=
   match n with
   | Server => nop                 (* server performs no external IO *)
@@ -660,8 +672,10 @@ HandleInp (n: Name) (s: State n) (inp: Inp) :=
       if s == true then (         (* if lock held *)
         s := false;;              (* update state *)
         send (Server, UnlockMsg)) (* tell Server lock freed *)
+#+END_SRC
 
-(* 4 - handler for network messages *)
+Handlers for the network messages are implemented
+#+BEGIN_SRC ocaml
 HandleMsg (n: Name) (s: State n) (src: Name) (msg: Msg) :=
   match n with
   | Server =>
@@ -682,10 +696,270 @@ HandleMsg (n: Name) (s: State n) (src: Name) (msg: Msg) :=
     | GrantMsg =>               (* lock acquired *)
       s := true;;               (* update state *)
       output Grant              (* notify listeners *)
-     | _ => nop                 (* never happens *)
+    | _ => nop                  (* never happens *)
 #+END_SRC
 
+- This implementation assumes that network is ideal
+- Each node listens for input and message events and handles it accordingly.
+- In a reliable network, each step of execution either 
+  - picks an arbitrary node and delivers an arbitrary external input
+  - picks a message in the network
+  then runs the appropriate handler and updates the state
 
+**** Verification
+
+1. Prove an invariant about the *reachable node and network states* of the lock
+   service application
+2. *Relate* these reachable states to the *producible states*
+3. Show that the previous two steps imply =mutex= holds on *all producible traces*
+   
+\begin{align*}
+\mathtt{mutex}_{\mathtt{state}}(\Sigma, P) & := \forall n \; m, n \neq m \rightarrow
+\neg \mathtt{haslock}(\Sigma,n) \vee \neg \mathtt{haslock}(\Sigma, m) \\
+
+\mathtt{haslock}(\Sigma, n) & := \Sigma(\mathtt{Agent}(n)) = \mathtt{true}
+\end{align*}
+
+- The function $\Sigma$ maps node names to their state
+- $P$ is the set of in-flight packets
+- The property $\mathtt{mutex}_{\mathtt{state}}$ ensures that at most one agent
+  node holds the lock at a time
+- One *inductive state invariant* for $\mathtt{mutex}_{\mathtt{state}}$ is (~
+  500 lines of Coq code) :
+
+\begin{align*}
+& ( \forall n, \; \mathtt{hasLock}(\Sigma, \;n) \rightarrow \mathtt{atHead}(\Sigma, \;n) ) 
+&& \text{agree on who holds the lock} \\
+
+\wedge & ( \forall p \in P, \; p.\mathtt{body} = \mathtt{GrantMsg} \rightarrow
+\mathtt{grantee}(\Sigma, \; p.\mathtt{dest}) ) 
+&& \text{grant is not given to holder of the lock} \\
+
+\wedge & ( \forall p \in P, \; p.\mathtt{body} = \mathtt{UnlockMsg} \rightarrow
+\mathtt{grantee}(\Sigma, \; p.\mathtt{source}) ) 
+&& \text{unlock comes from the holder} \\
+
+\wedge & \mathtt{at\_most\_one} \; \lbrace \mathtt{GrantMsg}, \; \mathtt{UnlockMsg}
+\rbrace \; P 
+&& \text{at most one in-flight message}
+\end{align*}
+
+where 
+
+\begin{align*}
+\mathtt{atHead}(\Sigma, \; n) \;\; & := \;\; \exists t, \;
+\Sigma(\mathtt{Server}) = n :: t \\
+
+\mathtt{grantee}(\Sigma, \; n) \;\; & := \;\; \mathtt{atHead}(\Sigma, \; n)
+\wedge \neg \mathtt{hasLock}(\Sigma, \; n)
+\end{align*}
+
+- Second step of the proof relates reachable states to the traces that a system
+  can produce. It requires that whenever a =Grant= output appears in the trace
+  without a corresponding =Unlock= input, that agent is the current holder of
+  the lock:
+
+\begin{align*} 
+\mathtt{trace\_state\_agreement}(\tau, \Sigma) & \; := \; \forall n, \;
+\mathtt{lastGrant}(\tau, \; n) \leftrightarrow \mathtt{hasLock}(\Sigma, \; n) \\
+\mathtt{lastGrant}(\tau, \; n) & \; := \; \tau = \tau_1 \mathtt{++} \langle n,
+\mathtt{Grant} \rangle :: \tau_2 \; \wedge \; \forall m, \; \langle m, \mathtt{Unlock}
+\rangle \not\in \tau_2
+\end{align*}
+**** Verified System Transformers
+
+- To tolerate network faults (e.g. packet drops, duplication), they use
+  *transmission transformers*.
+
+- It provides a system transformer that adds sequence numbers to every outgoing
+  packet and ignores the ones packets that it has already seen
+
+- To tolerate node crashes, they use *replication transformers*
+
+**** Running the lock service app
+- Invoke Coq’s built-in extraction mechanism to generate OCaml code from the Coq
+  implementation, compile it with the OCaml compiler, and link it with a Verdi
+  shim.
+
+- The shim is written in OCaml; it implements network primitives (e.g., packet
+  send/receive) and an event loop that invokes the appropriate event handler for
+  incoming network packets, IO, or other events
+*** Network Semantics
+
+- Network semantics are defined as step relations on a "state of the world". The
+  state of the world differs among network semantics, but always includes a
+  trace of the system’s external input and output.
+
+- *Single-node semantics*:
+\[
+\frac{H_{inp}(\sigma, i) = (\sigma', o)}{(\sigma, T) \rightarrow_{s} (\sigma', T
+\mathtt{++} \langle i, o \rangle)} \text{INPUT}
+\]
+- *Reordering semantics*:
+
+  $H_{inp}$ is for handling IO and $H_{net}$ is for handling network messages.
+
+
+\begin{align*}  
+\frac{H_{inp}(n, \Sigma[n], i) = (\sigma', o, P') \;\;\;\; \Sigma' = \Sigma[n \mapsto \sigma']
+}{
+(P, \Sigma, T) \rightarrow_{r} (P \uplus P', \Sigma', T \mathtt{++} \langle i, o \rangle)
+} \text{INPUT}
+\end{align*}  
+
+\begin{align*}  
+& \frac{
+H_{net}(dst, \Sigma[dst], src, m) = (\sigma', o, P') \;\;\;\; \Sigma' = \Sigma[dst \mapsto \sigma']
+}{
+(\lbrace (src,dst,m)\rbrace \uplus P, \Sigma, T) \rightarrow_{r} (P \uplus P', \Sigma', T \mathtt{++} \langle o \rangle)
+} \text{DELIVER}
+\end{align*}
+
+- *Duplicating semantics*:
+
+\[
+\frac{p \in P}{(P,\Sigma, T) \rightarrow_{\mathtt{dup}} (P \uplus \{p\}, \Sigma, T)} \text{DUPLICATE}
+\]
+
+- *Dropping semantics*:
+
+  Handler functions only execute when packets are delivered and packets may be
+  arbitrarily dropped. Systems which tolerate dropped packets need to
+  re-transmit some messages, so the dropping semantics also includes a TIMEOUT
+  rule
+
+\[
+\frac{}{(\{p\} \uplus P, \Sigma, T) \leftarrow_{\mathtt{drop}} (P, \Sigma, T)}
+\text{DROP}
+\]
+
+\[
+\frac{
+H_{\mathtt{tmt}}(n, \Sigma[n]) = (\sigma', o, P') \;\;\;\; \Sigma'=\Sigma[n
+\mapsto \sigma']
+}{
+(P, \Sigma, T) \rightarrow_{\mathtt{drop}} (P \uplus P', \Sigma', T \mathtt{++}
+\langle \mathtt{tmt}, o \rangle )} \text{TIMEOUT}
+\]
+
+- *Node failure*:
+
+  Set $F$ contains the failed nodes. A node can fail anytime, and failed nodes
+  can return any time. When it returns, $H_{\mathtt{rbt}}$ function is run on
+  its pre-failure state
+
+\[
+\frac{
+n \not\in F
+}{
+(P, \Sigma, F, T) \rightarrow_{\mathtt{fail}} (P, \Sigma, F \cup \{n\}, T)
+} \text{CRASH}
+\]
+
+\[
+\frac{
+n \not\in F \;\;\;\; H_{\mathtt{rbt}}(n, \Sigma[n]) = \sigma' \;\;\;\; \Sigma' =
+\Sigma[n \mapsto \sigma']
+}{
+(P, \Sigma, F, T) \rightarrow_{\mathtt{fail}} (P, \Sigma', F - \{n\}, T)
+} \text{REBOOT}
+\]
+*** Verified System Transformers
+
+- System transformers are implemented as wrappers around the system’s state,
+  messages, and handlers. 
+- Messages and state are generally transformed to include additional fields.
+- Handlers in the transformed system call into underlying handlers and implement
+  additional functionality.
+  
+**** Sequence Numbering Transformer
+
+- Sender uses a unique number for each of its message, receiver keeps a list of
+  =<number, sender>= pairs they've seen.
+
+- The following transformer =SeqNum= takes the a system =S= and describes a new
+  one in reordering semantics
+
+#+BEGIN_SRC ocaml
+SeqNum (S) := 
+  Name := S.Name
+  
+  Inp := S.Inp
+  Out := S.Out 
+  Msg := { seqnum: int; underlying_msg: S.Msg }
+
+  State (n: Name) := { seen: list (Name * int); 
+                       next_seqnum: int; 
+                       underlying_state: S.State n }
+
+  InitState (n: Name) := { seen := []; 
+                           next_seqnum := 0; 
+                           underlying_state := S.InitState n }
+
+  HandleInp (n: Name) (s: State n) (inp: Inp) := 
+    wrap_result (S.HandleInp (underlying_state s) inp)
+
+  HandleMsg (n: Name) (s: State n) (src: Name) (msg: Msg) := 
+    if not (contains s.seen (src, msg.seqnum)) then 
+      s.seen := (src, msg.seqnum) :: s.seen;; 
+      (* wrap_result adds sequence numbers to messages while 
+         incrementing next_seqnum *) 
+      wrap_result (S.HandleMsg n (underlying_state s) 
+                               src (underlying_msg msg))
+#+END_SRC
+
+**** Correctness of Sequence Numbering
+
+- Each verified transformer $T$ provides a function =transfer= which translates
+  properties of traces in the underlying semantics $\rightarrow_1$ to the target
+  semantics $\rightarrow_2$, where $\mathtt{holds}(\Phi, S, \rightarrow)$
+  asserts that a property $\Phi$ is true of all traces of a system $S$ under the
+  semantics defined by $\rightarrow$.
+
+\[
+\forall \Phi \; S, \;\mathtt{holds}(\Phi, S, \rightarrow_1) \rightarrow
+\mathtt{holds}(\mathtt{transfer}(\Phi), T(S), \rightarrow_2)
+\]
+
+- For sequence numbering transformer, $\rightarrow_1$ is $\rightarrow_r$
+  (reordering semantics) and $\rightarrow_2$ is $\rightarrow_{dup}$ (duplicating
+  semantics).
+
+- =transfer= function is the *identity*, since the properties of the traces are
+  preserved.
+  
+- External output is depends only on the *wrapped state* of the system, and they
+  prove that the wrapped state is preserved by *backward simulation*
+
+- Backward simulation: For any step the transformed system $T(S)$ can take,
+  $S$ can take an equivalent step.
+  - =unwrap= returns the underlying state at each node
+  - $\mathtt{dedup}_{\mathtt{net}}$ returns a bag of non-duplicate packets which
+    haven't yet been delivered.
+
+  The simulation is specified as the following, where $\rightarrow_{dup}^*$ and
+  $\rightarrow_r^*$ are the reflexive transitive closures:
+
+\[
+(\Sigma_0, \emptyset, \emptyset) \; \rightarrow_{dup}^* \; (\Sigma, P, T) 
+\;\;\;\; \rightarrow \;\;\;\;
+(\mathtt{unwrap}(\Sigma_0), \emptyset, \emptyset) \; \rightarrow_{r}^* \;
+(\mathtt{unwrap}(\Sigma), \mathtt{dedup}_{\mathtt{net}}(\Sigma, P), T)
+\]
+
+The proof is by induction on the step relation:
+
+1. For =DUPLICATE= steps, $\rightarrow_{r}^*$ holds reflexively, since
+   $\mathtt{dedup}_{\mathtt{net}}$ returns the same network when a packet is
+   duplicated and the state and trace are unchanged. 
+2. For =DELIVER= steps, the proof shows that either the delivered packet is
+   ignored by the destination node, in which case
+   $\mathtt{dedup}_{\mathtt{net}}$ holds reflexively, or that the underlying
+   handler is run normally, in which case the underlying system can take the
+   analogous DELIVER step. 
+3. For both the =DELIVER= and =INPUT= steps, the proof shows that wrapping the
+   sent packets results in a de-duplicated network that is reachable in the
+   underlying system. 
 ** Ivy: Safety Verification by Interactive Generalization
 
 [[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
