@@ -559,7 +559,6 @@ version of Chubby to Paxos version during the course of *100 machine years*:
 - The fault-tolerance computing community *has not paid enough attention to
   testing*, a key ingredient for building fault-tolerant systems.
 
-* Unread
 ** Verdi: a framework for implementing and formally verifying distributed systems
 
 [[http://verdi.uwplse.org/verdi.pdf][link]]
@@ -927,7 +926,7 @@ SeqNum (S) :=
 
 - =transfer= function is the *identity*, since the properties of the traces are
   preserved.
-  
+
 - External output is depends only on the *wrapped state* of the system, and they
   prove that the wrapped state is preserved by *backward simulation*
 
@@ -960,6 +959,139 @@ The proof is by induction on the step relation:
 3. For both the =DELIVER= and =INPUT= steps, the proof shows that wrapping the
    sent packets results in a de-duplicated network that is reachable in the
    underlying system. 
+  
+*Ghost variables* are implemented as system transformers
+
+
+*** Primary Backup Transformer (Case Study)
+
+- Takes a single-node system and returns a replicated version of the system in
+  the reordering semantics
+
+- A primary node synchronously replicates requests to a backup node: when a
+  request arrives, the primary ensures that the backup has processed it before
+  applying it locally and replying to the client.
+
+- They were able to show that either the primary and the backup have the same
+  state or the backup’s state is one step ahead of the primary.
+  
+*** Raft Replication Transformer (Case Study)
+    
+- They implement consistent state machine replication as a system transformer.
+  It lifts a system designed for the state machine semantics into a system that
+  tolerates machine crashes in the failure semantics.
+
+- *Consensus transformer* provides an indistinguishability result for
+  /linearizability/, which states that _any possible trace of the replicated
+  system is equivalent to some valid trace of the underlying system_ under
+  particular constraints about when operations can be re-ordered.
+
+#+CAPTION: Raft's message type:
+|----------+----------------------+----------------------|
+|          | Name                 | Purpose              |
+|----------+----------------------+----------------------|
+| Messages | =AppendEntries=      | Log Replication      |
+|          | =AppendEntriesReply= |                      |
+|          | =RequestVote=        | Leader Election      |
+|          | =RequestVoteReply=   |                      |
+|----------+----------------------+----------------------|
+| Inputs   | =ClientRequest=      | Client inputs        |
+|----------+----------------------+----------------------|
+| Outputs  | =ClientResponse=     | Successful execution |
+|          | =NotLeader=          | Resubmit             |
+|----------+----------------------+----------------------|
+
+- Raft:
+  - Divides time into /terms/ of arbitrary length
+  - There can be *at most one leader* per term
+  - If a node n suspects that leader is failed, it broadcasts =RequestVote=
+  - If a quorum votes for it, then node n becomes the leader
+
+**** Raft Proof
+
+- *Linearizability* guarantees that clients see a consistent view of the state
+  machine: clients see a consistent order in which operations were executed, and
+  any request issued after a particular response is guaranteed to be ordered
+  after that response.
+
+- They've verified linearizability of *Raft's* states machine safety property,
+  *not their* implementation of Raft.
+
+- A trace \tau of requests I_1,...,I_n and responses O_1,...,O_m (where there is
+  a total ordering on requests and responses) is linearizable with respect to an
+  underlying state machine if there exists a trace of operations \tau' such
+  that: 
+  1. \tau' is a valid, sequential execution of the underlying state machine
+     
+     *Proof:* They show that the state machine state is correctly managed by Raft and
+     that entries are applied in the order they appear in the log
+
+  2. Every response in \tau has a corresponding operation in \tau'
+     
+     *Proof:* This follows from the fact Raft never issues a =ClientResponse=
+     before the corresponding log entry is applied to the state machine
+
+  3. If a response to an operation op_1 occurs before a request for an operation
+     op_2 in \tau, then op_1 occurs before op_2 in \tau'.
+     
+     *Proof:* This holds because Raft only appends entries to the log: if a
+     =ClientResponse= has already been issued, then that entry is already in the
+     log, so any subsequent =ClientRequest= will be ordered after it in the log.
+
+- The *key to the proof* is that Raft’s internal log contains a linearized
+  ordering of operations. The desired underlying trace, then, is just the list
+  of operations in the order of the log.
+
+#+CAPTION: Verification effort (# of lines)
+| System                 | Spec | Impl | Proof |
+|------------------------+------+------+-------|
+| Sequence numbering     |   20 |   89 |   576 |
+| Key-value store        |   41 |  138 |   337 |
+| Primary-backup         |   20 |  134 |  1155 |
+| KV+PB                  |    5 |  N/A |    19 |
+| Raft (Linearizability) |  170 |  520 |  4144 |
+| Verdi                  |  148 |  220 |  2364 |
+
+*** Evaluation
+
+- They applied the replication transformer to key-value store example, which
+  they call =vard=.
+- They show that Verdi has a comparable performance with respect to =etcd=, a
+  production fault-tolerant key-value store written in the Go that uses Raft
+  internally. Even though =vard= is not feature complete (=etcd= uses more
+  complex network protocol, etc.).
+
+*** Related work
+
+- EventML: provides expressive primitives and combinators for implementing
+  distributed systems. Programs can be automatically abstracted into formula in
+  the /Logic of Events/, which can then be used to verify the system in /NuPRL/.
+  
+  ShadowDB uses this to implement a total-order broadcast service. However
+  replicated database itself is not verified.
+
+- HOL4 theorem prover: It is used to verify an implementation of the TCP and
+  POSIX sockets API. In Verdi, rather than the network stack, they verify the
+  high level application instead.
+
+- Ensemble: Layers simple micro protocols to produce sophisticated distributed
+  systems. Cross-protocol optimization is used to increase efficiency.
+
+- Verified Software Defined Networking
+
+- Specification reasoning: e.g. TLA
+
+- Model checking & testing: e.g. Mace provides a full suite of tools for
+  building and model checking distributed systems (including /liveness/
+  properties)
+
+* Unread
+** Raft: In Search of an Understandable Consensus Algorithm
+   
+[[https://raft.github.io/raft.pdf][link]]
+
+There's a simple explanation of the Raft algorithm (with visualizations) [[http://thesecretlivesofdata.com/raft/][here]].
+
 ** Ivy: Safety Verification by Interactive Generalization
 
 [[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
