@@ -1014,10 +1014,10 @@ The proof is by induction on the step relation:
   any request issued after a particular response is guaranteed to be ordered
   after that response.
 
-- They've verified linearizability of *Raft's* states machine safety property,
-  *not their* implementation of Raft.
+- They've *verified linearizability of Raft's states machine safety property*,
+  *NOT their* implementation of Raft.
 
-- A trace \tau of requests I_1,...,I_n and responses O_1,...,O_m (where there is
+- *Generalized theory of linearizable systems*: A trace \tau of requests I_1,...,I_n and responses O_1,...,O_m (where there is
   a total ordering on requests and responses) is linearizable with respect to an
   underlying state machine if there exists a trace of operations \tau' such
   that: 
@@ -1085,13 +1085,102 @@ The proof is by induction on the step relation:
   building and model checking distributed systems (including /liveness/
   properties)
 
-* Unread
 ** Raft: In Search of an Understandable Consensus Algorithm
    
 [[https://raft.github.io/raft.pdf][link]]
 
 There's a simple explanation of the Raft algorithm (with visualizations) [[http://thesecretlivesofdata.com/raft/][here]].
 
+*** Introduction
+
+- Stronger idea of leadership :)
+- Built in leader election using randomized timers
+- Handles membership changes
+  
+*Paxos drawbacks:*
+- Difficult to understand
+- No good foundation for building practical implementations. 
+- There's no widely agreed-upon algorithm for multi-Paxos.
+- Uses a symmetric peer-to-peer approach, only suggests weak form of leadership
+  for performance optimization
+- Implementations generally begin with Paxos but later develops into a different
+  architecture due to difficulties
+  
+*Goals of Raft:*
+1. Understandable
+2. Complete and practical
+3. Efficient for common operations
+   
+*** Algorithm
+
+- *Leader election*: A new leader must be chosen when an existing leader fails
+- *Log replication*: The leader must accept log entries from clients and replicate
+  them across the cluster, forcing others to agree with its own
+- *Safety properties*:
+  - *At most one leader* can be elected in a term. During a *split vote*, the
+    term will end with no leader; a new term with a new election will begin.
+  - A leader *only appends* new entries in its log
+  - If two logs contain an entry with the same index and term, then the logs are
+    *identical in all terms up through* the given index
+  - If a log entry is committed in a given term, it'll be *present in the higher
+    numbered terms* as well
+  - If a server has applied a log entry at a given index to its state machine,
+    *no other server will ever apply a different log entry* for the same index.
+    
+_All Servers:_
+- If =commitIndex= > =lastApplied=: increment =lastApplied=, apply
+  =log[lastApplied]= to state machine
+- If RPC request or response contains term T > =currentTerm=: set =currentTerm =
+  T=, convert to follower
+
+_Followers:_
+- Respond to RPC's from candidates or leaders
+- If election timeout elapses without receiving =AppendEntries= RPC from current
+  leader or granting vote to candidate: convert to candidate
+  
+_Candidates:_
+- On conversion to candidate, start election:
+  - Increment =currentTerm=
+  - Vote for self
+  - Reset election timer
+  - Send =RequestVote= RPC's to all other servers
+- If votes received from majority of servers: become leader
+- If =AppendEntries= RPC received from new leader: convert to follower
+- If election timeout elapses: start new election
+
+_Leaders:_
+- Upon election: send initial empty =AppendEntries= RPC's (*heartbeat*) to each
+  server; repeat during idle periods to prevent election timeouts
+- If command received from client: append entry to local log, respond after
+  entry applied to state machine
+- If last log index \geq =nextIndex= for a follower: send =AppendEntries= RPC
+  with log entries starting at =nextIndex= 
+  - If successful: update =nextIndex= and =matchIndex= for follower
+  - If =AppendEntries= fails because of *log inconsistency*: decrement =nextIndex=
+    and retry
+- If \exists N, N > =commitIndex=, a majority of =matchIndex[i]= \geq N and
+  =log[N].term =  currentTerm=, set =commitIndex = N=
+
+*Notes:*
+- Each server *vote for at most one candidate* in a given term
+
+- To *prevent split votes* in the first place, election timeouts are chosen
+  *randomly* from a fixed interval (e.g., 150–300ms). Each candidate restarts
+  its randomized election timeout at the start of an election, and it waits for
+  that timeout to elapse before starting the next election.
+
+- Raft uses the voting process to prevent a candidate from winning an election
+  *unless its log contains all committed entries*. Voters denies its vote if its
+  own log is more up-to-date than that of the candidate
+
+- Raft will be able to elect and maintain a steady leader as long as the system
+  satisfies the following *timing requirements*:
+  
+  =broadcastTime= << =electionTime= << MTBF
+
+  ex: broadcast=0.5-20ms, election=10-500ms, MTBF=several months
+  
+* Unread
 ** Ivy: Safety Verification by Interactive Generalization
 
 [[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
