@@ -1,5 +1,5 @@
 #+TITLE: Reading List
-#+OPTIONS: toc:t html-postamble:nil tex:t
+#+OPTIONS: toc:t html-postamble:nil tex:t num:nil
 
 # bigblow
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://www.pirilampo.org/styles/bigblow/css/htmlize.css"/>
@@ -1014,8 +1014,9 @@ The proof is by induction on the step relation:
   any request issued after a particular response is guaranteed to be ordered
   after that response.
 
-- They've *verified linearizability of Raft's states machine safety property*,
-  *NOT their* implementation of Raft.
+- They *assumed* that Raft's state machine safety property *holds*, and proved
+  that it implies *linearizability* of the Raft. Their proof of Raft's state
+  machine safety was still in progress.
 
 - *Generalized theory of linearizable systems*: A trace \tau of requests I_1,...,I_n and responses O_1,...,O_m (where there is
   a total ordering on requests and responses) is linearizable with respect to an
@@ -1185,6 +1186,21 @@ _Leaders:_
 
 [[https://www.cs.tau.ac.il/~odedp/ivy.pdf][link]]
 
+*** Abstract
+
+- interactive
+- infinite state
+- user generalizes the proof using the counter-example
+- searches for universally qualified invariants
+- uses restrictive modeling language, this ensures that all verification
+  conditions can be checked algorithmically
+- has a GUI
+
+*** Introduction
+    
+- They claim that current automated methods are *opaque*, they should fail
+  *visibly*
+- 
 ** Verifying Fault-Tolerant Erlang Programs
 
 [[ftp://ftp.inrialpes.fr/pub/vasy/publications/others/Benac-Fredlund-Derrick-05.pdf][link]]
