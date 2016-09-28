@@ -5,6 +5,7 @@
 *.tex
 
 ltxpng/
-sitemap.org
+index.org
 \#*\#
 
+/theindex.inc

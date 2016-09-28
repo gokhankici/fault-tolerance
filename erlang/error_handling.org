@@ -1,5 +1,7 @@
 #+TITLE: Error Handling in Erlang
 #+OPTIONS: toc:t html-postamble:nil num:nil
+#+INDEX: Erlang
+#+INDEX: error handling
 
 [[file:~/Desktop/erlang-book-part1.pdf][Erlang textbook]] - Page 91
 

@@ -1,5 +1,6 @@
 #+Title: Analyzing Fault Tolerance for Erlang Applications
-#+OPTIONS: toc:t html-postamble:nil tex:t num:nil
+#+OPTIONS: toc:t html-postamble:nil tex:t
+#+INDEX: Analyzing Fault Tolerance for Erlang Applications
 
 [[https://uu.diva-portal.org/smash/get/diva2:213697/FULLTEXT01.pdf][Link]]
 
@@ -11,4 +12,65 @@
    2. Not hiding any persistent errors
 
 * Introduction
+
+Dependability:
+
+1. fault prevention
+   - related to systems engineering
+2. fault tolerance:
+   1) Detect
+   2) Diagnose
+   3) Error recovery
+      - backward recovery: restore to earlier error-free state
+      - forward recovery: transform the erroneous state into an error-free one
+      - compensation: erroneous state contains enough redundancy to calculate an
+        error free state
+3. fault removal
+   - verification: it can be formal methods, code inspection, or testing
+   - regression verification
+4. fault forecasting
+   - evaluation of the system by predicting the likelihood of a failure & its
+     effect
+
+*order:* prevention -> removal -> forecasting -> tolerance
+
+*Erlang:* error detection through /linking/ processes
+
+*fault injection*: to test the fault tolerance properties. even worse when the
+system is distributed
+
+** Problem
+
+#+BEGIN_QUOTE
+Given a specific implementation of an Erlang application, automatically
+determine the fault tolerance properties of that application.
+#+END_QUOTE  
+
+Questions:
+
+1. which fault model? what type of faults? how to handle?
+2. which properties of Erlang applications? 
+   - e.g. how many times the system tries to recover before failing
+3. what are the assumptions about the Erlang programs
+4. what type of formal semantics to use as a model of Erlang and its env
+5. how to analyze the programs
+
+** Fault tolerance
+
+*** Fault Models
+
+- crash: entire system stops
+- fail-stop: like crash, but the stopping of a subsystem is visible to other subsystems
+- byzantine: subsystem may behave in any way (including malevolently)
+
+|          | live        | not live  |
+| safe     | masking     | fail safe |
+| not safe | non-masking | none      |
+
+- *non-masking:* after violating safety properties, returns to normal execution. 
+  - soft real time systems: vast majority of tasks are handled correctly, a few
+    may fail completely. 
+  - e.g. telephone switching, four-nines availability (99.99%)
+
+*** Model of distributed computation
 
