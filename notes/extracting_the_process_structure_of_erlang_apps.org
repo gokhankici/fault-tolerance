@@ -1,0 +1,104 @@
+#+TITLE: Extracting the process structure of Erlang applications
+#+OPTIONS: toc:t html-postamble:nil tex:t
+
+* Introduction
+
+- fault handling
+  - fault: undue process termination, 
+  - treatment: restart of the terminated process (possibly together with other
+    processes)
+- supervisor behavior
+  - how often supervisor will try to restart its children before giving up
+  - use =spawn_link= (since process may die between separate =spawn= and =link=)
+
+* Processes, behaviors and applications
+
+** Failure handling
+
+#+BEGIN_SRC erlang
+process_flag(trap_exit, true)
+#+END_SRC
+
+- If =trap_exit= is false (by default), the "informed" process is simply killed,
+  and will only be informed if the other process terminated abnormally
+
+- If =trap_exit= is true, other process will be informed through a special
+  message, no matter how the dying process is terminated (normally or abnormally).
+
+- BIF's to examine and monitor processes: =is_process_alive=, =processes=,
+  =process_info=, =monitor=, ...
+
+** Behaviors
+
+- Realizations of design patterns addressing common problems of distributed
+  concurrent systems
+
+- *supervisor behavior:* =init= function computes what children should be
+  started, and library handles the actual starting, supervision, restarting and
+  stopping of the children
+  - restart strategies:
+    - =one_for_one= only abnormally terminated child
+    - =one_for_all= all children
+    - =one_for_rest= children started after the abnormal one
+  - in which case:
+    - =permanent= always
+    - =transient= only if it terminates abnormally
+    - =temporary= never
+  - no more than =maxR= restarts in =maxT= seconds
+
+- there's also =gen_event=, =gen_fsm=, =gen_server=, =supervisor_bridge=
+* The captured process structure
+
+- evaluate call to =application:start/1=
+- evaluation:
+  - local function call: 
+    evaluate
+
+  - call to library modules that don't affect process structure:
+    abstraction of the actual result of the call?
+
+  - call to library they don't support:
+    give a warning and return $\bot$
+
+  - call to library modules that influence process structure:
+    replace the calls with *internal evaluator functions* that will modify the
+    behavior and make note of the "side-effects"
+
+  - call to not local or library module function:
+    load the module and evaluate as normal
+
+- =receive= always returns $\bot$
+
+** function calls
+
+- *erlang:*
+  
+  - =exit, fault, halt, link, process_flag, register, unlink, unregister= :
+    return $\bot$ but collect the "side-effect"
+
+  - =self= : return the internally created pid
+
+  - =spawn, spawn_link= : return a pid but no process is spawned
+    
+  - rest are treated as functions belonging to a module without influence on the
+    process structure
+
+- *application:*
+
+  - =start= : 
+    - read, parse & store the /application resource file/
+    - note the /application behavior/
+    - evaluate the =init= function
+      
+  - =get_key, get_env= : return the relevant information from the /application
+    resource file/
+
+- *gen\under{}event, gen\under{}fsm, gen\under{}server, supervisor\under{}bridge:*
+  
+  - =start, start_link= : note the behavior and evaluate the =init= function
+
+  - rest is treated as functions from unsupported modules
+
+- *supervisor:*
+
+  - =start_link= : 

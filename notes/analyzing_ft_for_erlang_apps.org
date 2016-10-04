@@ -72,5 +72,25 @@ Questions:
     may fail completely. 
   - e.g. telephone switching, four-nines availability (99.99%)
 
-*** Model of distributed computation
+** Erlang
 
+- non-masking
+- backward recovery, reset to an earlier state by shutting down all the affected
+  processes and restarting them
+- asynchronous point-to-point message passing
+- messages are received as a whole, order between 2 points are preserved
+- *partially synchronous:* uses *heart-beat* mechanism to detect whether another node can no longer be
+  reached
+- best practice is to organize all processes into /supervision structures/, 
+  
+** In this thesis
+
+- Extract an over approximation of the set of possible *static parts of process
+  structures* by *symbolically executing* the *initialization code* of the
+  application.
+  - static parts: processes that are always alive
+  - extraction assumes the use of OTP libraries
+
+** Related work
+
+- 
